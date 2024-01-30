@@ -1,0 +1,142 @@
+CREATE OR REPLACE TABLE
+  `20240128.prepared_train_test` AS
+SELECT
+  *,
+  CASE
+    WHEN ABS(MOD(FARM_FINGERPRINT(CAST(User_ID AS STRING)), 10)) < 8 THEN 'training'
+  ELSE
+  'prediction'
+END
+  AS dataframe
+FROM
+  `mma99660629.20240128.engagement`;
+
+CREATE OR REPLACE TABLE
+  `20240128.prepared_train_test` AS
+SELECT
+  *,
+  CASE
+    WHEN Week_Of < '2021-04-12' THEN 'training'
+  ELSE
+  'prediction'
+END
+  AS dataframe
+FROM
+  `mma99660629.20240128.engagement`;
+
+CREATE OR REPLACE MODEL
+  `20240128.linear_form` OPTIONS ( MODEL_TYPE = 'LINEAR_REG',
+    INPUT_LABEL_COLS = ['Revenue'],
+    CALCULATE_P_VALUES = TRUE,
+    CATEGORY_ENCODING_METHOD = 'DUMMY_ENCODING',
+    OPTIMIZE_STRATEGY = 'NORMAL_EQUATION') AS
+SELECT
+  Engagement,
+  Revenue
+FROM
+  `mma99660629.20240128.prepared_train_test`
+WHERE
+  dataframe='training';
+
+CREATE OR REPLACE MODEL
+  `20240128.cubic_form` OPTIONS ( MODEL_TYPE = 'LINEAR_REG',
+    INPUT_LABEL_COLS = ['Revenue'],
+    CALCULATE_P_VALUES = TRUE,
+    CATEGORY_ENCODING_METHOD = 'DUMMY_ENCODING',
+    OPTIMIZE_STRATEGY = 'NORMAL_EQUATION') AS
+SELECT
+  Engagement,
+  POW(Engagement, 2) AS Engagement_Squared,
+  POW(Engagement, 3) AS Engagement_Cubed,
+  Revenue
+FROM
+  `mma99660629.20240128.prepared_train_test`
+WHERE
+  dataframe='training';
+
+CREATE OR REPLACE TABLE
+  `20240128.in_sample_evaluation_linear_form` AS
+SELECT
+  *
+FROM
+  ML.EVALUATE(MODEL `20240128.linear_form`);
+
+CREATE OR REPLACE TABLE
+  `20240128.in_sample_evaluation_cubic_form` AS
+SELECT
+  *
+FROM
+  ML.EVALUATE(MODEL `20240128.cubic_form`);
+ 
+CREATE OR REPLACE TABLE
+  `20240128.model_interpretation_linear_form` AS
+SELECT
+  *
+FROM
+  ML.ADVANCED_WEIGHTS(MODEL `20240128.linear_form`);
+
+CREATE OR REPLACE TABLE
+  `20240128.model_interpretation_cubic_form` AS
+SELECT
+  *
+FROM
+  ML.ADVANCED_WEIGHTS(MODEL `20240128.cubic_form`);
+
+CREATE OR REPLACE TABLE
+  `20240128.out_sample_predictions_linear_form` AS
+SELECT
+  Revenue AS Actual,
+  predicted_Revenue AS Predicted
+FROM
+  ML.PREDICT(MODEL `20240128.linear_form`,
+    (
+    SELECT
+      *
+    FROM
+      `20240128.prepared_train_test`
+    WHERE
+      dataframe='prediction'));
+
+CREATE OR REPLACE TABLE
+  `20240128.out_sample_predictions_cubic_form` AS
+SELECT
+  Revenue AS Actual,
+  predicted_Revenue AS Predicted
+FROM
+  ML.PREDICT(MODEL `20240128.cubic_form`,
+    (
+    SELECT
+      *,
+      POW(Engagement, 2) AS Engagement_Squared,
+      POW(Engagement, 3) AS Engagement_Cubed
+    FROM
+      `20240128.prepared_train_test`
+    WHERE
+      dataframe='prediction'));
+
+CREATE OR REPLACE TABLE
+  `20240128.model_scoring_linear_form` AS
+SELECT
+  SQRT(AVG(POW((Predicted - Actual), 2))) AS RMSE,
+  AVG(ABS(Predicted - Actual)) AS MAE,
+  AVG(ABS((Predicted - Actual)/Actual)) AS MAPE
+FROM
+  `20240128.out_sample_predictions_linear_form`;
+
+CREATE OR REPLACE TABLE
+  `20240128.model_scoring_cubic_form` AS
+SELECT
+  SQRT(AVG(POW((Predicted - Actual), 2))) AS RMSE,
+  AVG(ABS(Predicted - Actual)) AS MAE,
+  AVG(ABS((Predicted - Actual)/Actual)) AS MAPE
+FROM
+  `20240128.out_sample_predictions_cubic_form`;
+
+
+
+
+
+
+
+
+
